@@ -413,39 +413,42 @@ def cutile_flash_attention_v2(Q, K, V):
     return O
 
 
+def run_benchmarks():
+    configs = [
+        (32, 128, 128, 32),     # small
+        (4, 32, 512, 64),       # medium
+        (4, 32, 2048, 64),      # large
+    ]
 
-configs = [
-    (32, 128, 128, 32),     # small
-    (4, 32, 512, 64),       # medium
-    (4, 32, 2048, 64),      # large
-]
+    all_results = []
+    config_labels = []
 
-all_results = []
-config_labels = []
+    for BATCH, NUM_HEADS, SEQ, HEAD_DIM in configs:
+        print(f"\n{'='*60}")
+        print(f"BATCH={BATCH}, NUM_HEADS={NUM_HEADS}, SEQ={SEQ}, HEAD_DIM={HEAD_DIM}")
+        print(f"{'='*60}")
 
-for BATCH, NUM_HEADS, SEQ, HEAD_DIM in configs:
-    print(f"\n{'='*60}")
-    print(f"BATCH={BATCH}, NUM_HEADS={NUM_HEADS}, SEQ={SEQ}, HEAD_DIM={HEAD_DIM}")
-    print(f"{'='*60}")
+        Q = torch.randn(BATCH, NUM_HEADS, SEQ, HEAD_DIM, dtype=torch.float16, device="cuda")
+        K = torch.randn(BATCH, NUM_HEADS, SEQ, HEAD_DIM, dtype=torch.float16, device="cuda")
+        V = torch.randn(BATCH, NUM_HEADS, SEQ, HEAD_DIM, dtype=torch.float16, device="cuda")
 
-    Q = torch.randn(BATCH, NUM_HEADS, SEQ, HEAD_DIM, dtype=torch.float16, device="cuda")
-    K = torch.randn(BATCH, NUM_HEADS, SEQ, HEAD_DIM, dtype=torch.float16, device="cuda")
-    V = torch.randn(BATCH, NUM_HEADS, SEQ, HEAD_DIM, dtype=torch.float16, device="cuda")
+        fns = {
+            "PyTorch (optimized)": pytorch_attention,
+            "PyTorch (manual)": pytorch_manual_attention,
+            "Flash v1": cutile_flash_attention_v1,
+            "Flash v2": cutile_flash_attention_v2,
+        }
+        # only include naive kernels for small SEQ (v1 hangs on large)
+        if SEQ <= 128:
+            fns["Cutile v1 (naive)"] = cutile_attention_v1
+        if SEQ <= 2048:
+            fns["Cutile v2 (naive)"] = cutile_attention_v2
 
-    fns = {
-        "PyTorch (optimized)": pytorch_attention,
-        "PyTorch (manual)": pytorch_manual_attention,
-        "Flash v1": cutile_flash_attention_v1,
-        "Flash v2": cutile_flash_attention_v2,
-    }
-    # only include naive kernels for small SEQ (v1 hangs on large)
-    if SEQ <= 128:
-        fns["Cutile v1 (naive)"] = cutile_attention_v1
-    if SEQ <= 2048:
-        fns["Cutile v2 (naive)"] = cutile_attention_v2
+        results = benchmark(fns, Q, K, V, ref_fn=pytorch_attention)
+        all_results.append(results)
+        config_labels.append(f"B={BATCH} H={NUM_HEADS}\nSEQ={SEQ} D={HEAD_DIM}")
 
-    results = benchmark(fns, Q, K, V, ref_fn=pytorch_attention)
-    all_results.append(results)
-    config_labels.append(f"B={BATCH} H={NUM_HEADS}\nSEQ={SEQ} D={HEAD_DIM}")
+    plot_benchmarks(all_results, config_labels)
 
-plot_benchmarks(all_results, config_labels)
+if __name__=="__main__":
+    run_benchmarks()
