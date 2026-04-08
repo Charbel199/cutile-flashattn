@@ -444,7 +444,7 @@ for BATCH, NUM_HEADS, SEQ, HEAD_DIM in configs:
     if SEQ <= 2048:
         fns["Cutile v2 (naive)"] = cutile_attention_v2
 
-    results = benchmark(fns, Q, K, V, ref_fn=pytorch_attention, timeout_sec=10)
+    results = benchmark(fns, Q, K, V, ref_fn=pytorch_attention)
     all_results.append(results)
     config_labels.append(f"B={BATCH} H={NUM_HEADS}\nSEQ={SEQ} D={HEAD_DIM}")
 
