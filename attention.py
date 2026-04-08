@@ -1,4 +1,5 @@
 import cuda.tile as ct
+from cuda.tile import RoundingMode as RMd   
 import torch
 import torch.nn.functional as F
 import math
@@ -315,11 +316,96 @@ def cutile_flash_attention_v1_kernel(Q: ct.Array,
              ct.reshape(ct.astype(o, ct.float16), (1, 1, BLOCK_M, HEAD_DIM)) # cutile array (unsqueezed) and cast back to float16
              )
 def cutile_flash_attention_v1(Q, K, V):
-    stream = torch.cuda.current_stream().cuda_stream                                                                                                       
-    grid = (BATCH, NUM_HEADS, math.ceil(SEQ/BLOCK_M))            
+    stream = torch.cuda.current_stream().cuda_stream
+    grid = (BATCH, NUM_HEADS, math.ceil(SEQ/BLOCK_M))
     O = torch.empty_like(Q)
-    scale = 1.0 / math.sqrt(HEAD_DIM)                                                                              
-    ct.launch(stream, grid, cutile_flash_attention_v1_kernel, (Q, K, V, scale, O))   
+    scale = 1.0 / math.sqrt(HEAD_DIM)
+    ct.launch(stream, grid, cutile_flash_attention_v1_kernel, (Q, K, V, scale, O))
+    return O
+
+@ct.kernel(occupancy=2)
+def cutile_flash_attention_v2_kernel(Q: ct.Array,
+                                     K: ct.Array,
+                                     V: ct.Array,
+                                     qk_scale: float,
+                                     O: ct.Array # output,
+                                    ):
+    """
+    Just an optimized version of the v1 flash attention kernel
+    """
+    
+    batch_idx = ct.bid(0)
+    head_idx = ct.bid(1)
+    query_row_idx = ct.bid(2)
+
+    q = ct.load(Q, # loading from tensor Q
+                (batch_idx, head_idx, query_row_idx * BLOCK_M, 0), # starting index for each dimension
+                (1, 1, BLOCK_M, HEAD_DIM) # how much to load (1 batch, 1 head, BLOCK_M rows/SEQ, full HEAD_DIM)
+                )
+    q = ct.reshape(q, (BLOCK_M, HEAD_DIM))  
+
+
+    # running max
+    m = ct.full((BLOCK_M, 1), float("-inf"), dtype=ct.float32)
+    # running sum
+    l = ct.zeros((BLOCK_M, 1), dtype=ct.float32)
+    # output accumulator
+    o = ct.zeros((BLOCK_M, HEAD_DIM), dtype=ct.float32)
+
+    for j in range((SEQ + BLOCK_N - 1) // BLOCK_N ):
+        k = ct.load(K, # loading from tensor K
+            (batch_idx, head_idx, j * BLOCK_N, 0), # starting index for each dimension
+            (1, 1, BLOCK_N, HEAD_DIM), # how much to load (1 batch, 1 head, BLOCK_N rows/SEQ, full HEAD_DIM)
+            latency=2) 
+
+        v = ct.load(V, # loading from tensor V
+            (batch_idx, head_idx, j * BLOCK_N, 0), # starting index for each dimension
+            (1, 1, BLOCK_N, HEAD_DIM), # how much to load (1 batch, 1 head, BLOCK_N rows/SEQ, full HEAD_DIM)
+            latency=4)
+
+        # squeeze tensors (to remove batch and head dims)
+        k = ct.reshape(k, (BLOCK_N, HEAD_DIM))
+        k_t = ct.transpose(k)  
+        # squeeze tensors (to remove batch and head dims)
+        v = ct.reshape(v, ((BLOCK_N, HEAD_DIM)))
+
+    
+        # matmul
+        acc = ct.zeros((BLOCK_M, BLOCK_N), dtype=ct.float32)
+        acc = ct.mma(q,k_t, acc) # (BLOCK_M, HEAD_DIM) @ (HEAD_DIM, BLOCK_N) -> (BLOCK_M, BLOCK_N)
+
+
+        # online softmax: maximum of tile
+        m_tile = ct.max(acc, axis=-1, keepdims=True) * qk_scale
+        m_new = ct.maximum(m, m_tile)
+        
+        # correction factor: rescale previous results to use new max
+        correction = ct.exp2(m - m_new, flush_to_zero=True)
+        l = correction * l # l originally contains sum(exp(s - m_old)), correction rescales to sum(exp(s - m_new))
+        o = correction * o # o originally contains o = exp(s0 - m_old) @ V0, so after correction -> exp(s0 - m_new) @ V0 = exp(s0 - m_old) * exp(m_old - m_new) @ V0: 
+
+        # accumulate this tile's contribution
+        softmax_numerator_tile = ct.exp2(acc  * qk_scale - m_new, flush_to_zero=True)
+        l = l + ct.sum(softmax_numerator_tile, axis=-1, keepdims=True)
+
+        o = ct.mma(softmax_numerator_tile.astype(ct.float16), v, o) 
+
+        m = m_new
+
+    # normalize by full row sum
+    o = ct.truediv(o, l, flush_to_zero=True, rounding_mode=RMd.APPROX)
+
+    ct.store(O, # output mem
+             (batch_idx, head_idx, query_row_idx * BLOCK_M, 0), # starting index for each dimension
+             ct.reshape(ct.astype(o, ct.float16), (1, 1, BLOCK_M, HEAD_DIM)) # cutile array (unsqueezed) and cast back to float16
+             )
+def cutile_flash_attention_v2(Q, K, V):
+    stream = torch.cuda.current_stream().cuda_stream
+    grid = (BATCH, NUM_HEADS, math.ceil(SEQ/BLOCK_M))
+    O = torch.empty_like(Q)
+    INV_LOG_2 = 1.0 / math.log(2)
+    qk_scale = (1.0 / math.sqrt(HEAD_DIM)) * INV_LOG_2
+    ct.launch(stream, grid, cutile_flash_attention_v2_kernel, (Q, K, V, qk_scale, O))
     return O
 
 
@@ -328,15 +414,17 @@ print(compute_error(pytorch_manual_attention(Q, K, V), pytorch_attention(Q, K, V
 print(compute_error(cutile_attention_v1(Q, K, V), pytorch_attention(Q, K, V)))
 print(compute_error(cutile_attention_v2(Q, K, V), pytorch_attention(Q, K, V)))
 print(compute_error(cutile_flash_attention_v1(Q, K, V), pytorch_attention(Q, K, V)))
-
+print(compute_error(cutile_flash_attention_v2(Q, K, V), pytorch_attention(Q, K, V)))
 
 print(pytorch_attention(Q,K,V).shape)
 print(cutile_attention_v1(Q,K,V).shape)
 print(cutile_attention_v2(Q,K,V).shape)
 print(cutile_flash_attention_v1(Q,K,V).shape)
+print(cutile_flash_attention_v2(Q,K,V).shape)
 
 print(time_fn(pytorch_attention, Q,K,V))
 print(time_fn(pytorch_manual_attention, Q,K,V))
 print(time_fn(cutile_attention_v1, Q,K,V))
 print(time_fn(cutile_attention_v2, Q,K,V))
 print(time_fn(cutile_flash_attention_v1, Q,K,V))
+print(time_fn(cutile_flash_attention_v2, Q,K,V))
