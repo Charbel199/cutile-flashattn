@@ -457,7 +457,7 @@ def cutile_flash_attention_v2(Q, K, V):
 
 
 # optional tri dao's flash attention implementations
-try:
+try: #TODO: setup flash-attn-4 (did not work on sm120)
     from flash_attn import flash_attn_func
     def flash_attn_dao(Q, K, V):
         # flash_attn expects (batch, seq, heads, dim), we have (batch, heads, seq, dim)

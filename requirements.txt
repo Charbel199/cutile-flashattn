@@ -2,3 +2,4 @@ torch>=2.5.0
 ninja
 numpy
 cuda-tile[tileiras]
+matplotlib
