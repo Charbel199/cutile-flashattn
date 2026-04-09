@@ -3,7 +3,7 @@ from cuda.tile import RoundingMode as RMd
 import torch
 import torch.nn.functional as F
 import math
-from utils import benchmark, plot_benchmarks
+from utils import benchmark, plot_benchmarks, time_fn
 
 BLOCK_M = 64  # tile size for Q rows (query dimension)
 BLOCK_N = 64  # tile size for K/V rows (key dimension)
@@ -331,6 +331,8 @@ def cutile_flash_attention_v2_kernel(Q: ct.Array,
                                      qk_scale: float,
                                      SEQ: ct.Constant[int],
                                      HEAD_DIM: ct.Constant[int],
+                                     BLOCK_M: ct.Constant[int],
+                                     BLOCK_N: ct.Constant[int],
                                      O: ct.Array # output,
                                     ):
     """
@@ -402,15 +404,56 @@ def cutile_flash_attention_v2_kernel(Q: ct.Array,
              (batch_idx, head_idx, query_row_idx, 0), # tile index
              ct.reshape(ct.astype(o, ct.float16), (1, 1, BLOCK_M, HEAD_DIM)) # cutile array (unsqueezed) and cast back to float16
              )
-def cutile_flash_attention_v2(Q, K, V):
-    batch, num_heads, seq, head_dim = Q.shape
+# tile configs per head_dim (power-of-two tile sizes that fit in SRAM)
+_TILE_CONFIGS_BY_HEAD_DIM = {
+    32:  ([64, 128], [32, 64]),
+    64:  ([64, 128, 256], [32, 64, 128]),
+    128: ([64, 128, 256], [32, 64, 128]),
+    256: ([64, 128],      [32, 64]),
+}
+_autotune_cache = {}
+def _launch_v2(Q, K, V, qk_scale, seq, head_dim, bm, bn):
+    batch, num_heads = Q.shape[:2]
     stream = torch.cuda.current_stream().cuda_stream
-    grid = (batch, num_heads, math.ceil(seq/BLOCK_M))
+    grid = (batch, num_heads, math.ceil(seq / bm))
     O = torch.empty_like(Q)
+    ct.launch(stream, grid, cutile_flash_attention_v2_kernel, (Q, K, V, qk_scale, seq, head_dim, bm, bn, O))
+    return O
+def cutile_flash_attention_v2(Q, K, V):
+    # extract tensor dimensions
+    batch, num_heads, seq, head_dim = Q.shape
+
+    # pre-compute the scale: 1/sqrt(d_k) * 1/ln(2) to be able to use exp2 (faster than exp)
     INV_LOG_2 = 1.0 / math.log(2)
     qk_scale = (1.0 / math.sqrt(head_dim)) * INV_LOG_2
-    ct.launch(stream, grid, cutile_flash_attention_v2_kernel, (Q, K, V, qk_scale, seq, head_dim, O))
-    return O
+
+    # key to cache tile sizes based on (seq, head_dim) tuple, we only autotune if new config
+    cache_key = (seq, head_dim)
+    if cache_key not in _autotune_cache:
+
+        # get tile sizes based on head_dim from _TILE_CONFIGS_BY_HEAD_DIM
+        tile_ms, tile_ns = _TILE_CONFIGS_BY_HEAD_DIM.get(head_dim, ([64, 128], [32, 64]))
+        configs = [(bm, bn) for bm in tile_ms for bn in tile_ns
+                   if seq % bm == 0 and seq % bn == 0]
+        if not configs:
+            configs = [(64, 64)]  # fallback
+
+        print(f"------[autotune] seq={seq} head_dim={head_dim}")
+        best_time = float("inf")
+        best_config = configs[0]
+        # run time_fn for every tile size config and choose the best one
+        for bm, bn in configs:
+            t = time_fn(lambda q, k, v: _launch_v2(q, k, v, qk_scale, seq, head_dim, bm, bn), Q, K, V)
+            print(f"    BLOCK_M={bm:3d} BLOCK_N={bn:3d} -> {t:.3f} ms")
+            if t < best_time:
+                best_time = t
+                best_config = (bm, bn)
+        print(f"  [autotune] best: BLOCK_M={best_config[0]} BLOCK_N={best_config[1]} ({best_time:.3f} ms)")
+        _autotune_cache[cache_key] = best_config
+
+    # get best tile sizes
+    bm, bn = _autotune_cache[cache_key]
+    return _launch_v2(Q, K, V, qk_scale, seq, head_dim, bm, bn)
 
 
 def run_benchmarks():
