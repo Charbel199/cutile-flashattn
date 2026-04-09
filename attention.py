@@ -42,13 +42,11 @@ def cutile_attention_v1_kernel(Q: ct.Array,
                 (batch_idx, head_idx, query_row_idx, 0), # tile index
                 (1, 1, BLOCK_M, HEAD_DIM) # how much to load (1 batch, 1 head, BLOCK_M rows/SEQ, full HEAD_DIM)
                 )
-    q = ct.astype(q, ct.float32)
 
     k = ct.load(K, # loading from tensor K
             (batch_idx, head_idx, 0, 0), # tile index
             (1, 1, SEQ, HEAD_DIM), # how much to load (1 batch, 1 head, full SEQ, full HEAD_DIM)
             )
-    k = ct.astype(k, ct.float32)
     
     # squeeze tensors (to remove batch and head dims)
     q = ct.reshape(q, (BLOCK_M, HEAD_DIM))  
@@ -122,7 +120,6 @@ def cutile_attention_v2_kernel(Q: ct.Array,
                 (batch_idx, head_idx, query_row_idx, 0), # tile index
                 (1, 1, BLOCK_M, HEAD_DIM) # how much to load (1 batch, 1 head, BLOCK_M rows/SEQ, full HEAD_DIM)
                 )
-    q = ct.astype(q, ct.float32)
     q = ct.reshape(q, (BLOCK_M, HEAD_DIM))  
 
     for j in range((SEQ + BLOCK_N - 1) // BLOCK_N ):
@@ -130,7 +127,6 @@ def cutile_attention_v2_kernel(Q: ct.Array,
             (batch_idx, head_idx, j, 0), # tile index
             (1, 1, BLOCK_N, HEAD_DIM), # how much to load (1 batch, 1 head, BLOCK_N rows/SEQ, full HEAD_DIM)
             ) 
-        k = ct.astype(k, ct.float32)
         # squeeze tensors (to remove batch and head dims)
         k = ct.reshape(k, (BLOCK_N, HEAD_DIM))
         k_t = ct.transpose(k)  
@@ -255,7 +251,6 @@ def cutile_flash_attention_v1_kernel(Q: ct.Array,
                 (batch_idx, head_idx, query_row_idx, 0), # tile index
                 (1, 1, BLOCK_M, HEAD_DIM) # how much to load (1 batch, 1 head, BLOCK_M rows/SEQ, full HEAD_DIM)
                 )
-    q = ct.astype(q, ct.float32)
     q = ct.reshape(q, (BLOCK_M, HEAD_DIM))
 
 
@@ -271,7 +266,6 @@ def cutile_flash_attention_v1_kernel(Q: ct.Array,
             (batch_idx, head_idx, j, 0), # tile index
             (1, 1, BLOCK_N, HEAD_DIM), # how much to load (1 batch, 1 head, BLOCK_N rows/SEQ, full HEAD_DIM)
             )
-        k = ct.astype(k, ct.float32)
 
         v = ct.load(V, # loading from tensor V
             (batch_idx, head_idx, j, 0), # tile index
