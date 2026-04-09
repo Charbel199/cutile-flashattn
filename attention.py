@@ -7,6 +7,7 @@ from utils import benchmark, plot_benchmarks, time_fn
 
 BLOCK_M = 64  # tile size for Q rows (query dimension)
 BLOCK_N = 64  # tile size for K/V rows (key dimension)
+INV_LOG_2 = 1.0 / math.log(2)
 
 
 def pytorch_manual_attention(Q, K, V):
@@ -357,43 +358,42 @@ def cutile_flash_attention_v2_kernel(Q: ct.Array,
     # output accumulator
     o = ct.zeros((BLOCK_M, HEAD_DIM), dtype=ct.float32)
 
-    for j in range((SEQ + BLOCK_N - 1) // BLOCK_N ):
-        k = ct.load(K, # loading from tensor K
-            (batch_idx, head_idx, j, 0), # tile index
-            (1, 1, BLOCK_N, HEAD_DIM), # how much to load (1 batch, 1 head, BLOCK_N rows/SEQ, full HEAD_DIM)
-            latency=2) 
+    # pre-scale for exp2 inside kernel
+    qk_scale = qk_scale * INV_LOG_2
+
+    for j in range(ct.cdiv(SEQ, BLOCK_N)):
+        # load K transposed at load time via order=(0,1,3,2), no ct.transpose needed
+        k_t = ct.load(K,
+            (batch_idx, head_idx, 0, j), # note: dim 2 is 0, dim 3 is j (transposed indexing)
+            (1, 1, HEAD_DIM, BLOCK_N), # transposed shape
+            order=(0, 1, 3, 2),
+            latency=2)
+        k_t = ct.reshape(k_t, (HEAD_DIM, BLOCK_N))
 
         v = ct.load(V, # loading from tensor V
             (batch_idx, head_idx, j, 0), # tile index
             (1, 1, BLOCK_N, HEAD_DIM), # how much to load (1 batch, 1 head, BLOCK_N rows/SEQ, full HEAD_DIM)
             latency=4)
-
-        # squeeze tensors (to remove batch and head dims)
-        k = ct.reshape(k, (BLOCK_N, HEAD_DIM))
-        k_t = ct.transpose(k)  
-        # squeeze tensors (to remove batch and head dims)
         v = ct.reshape(v, ((BLOCK_N, HEAD_DIM)))
 
-    
-        # matmul
-        acc = ct.zeros((BLOCK_M, BLOCK_N), dtype=ct.float32)
-        acc = ct.mma(q,k_t, acc) # (BLOCK_M, HEAD_DIM) @ (HEAD_DIM, BLOCK_N) -> (BLOCK_M, BLOCK_N)
 
+        # matmul
+        acc = ct.mma(q, k_t, ct.full((BLOCK_M, BLOCK_N), 0.0, dtype=ct.float32))
 
         # online softmax: maximum of tile
-        m_tile = ct.max(acc, axis=-1, keepdims=True) * qk_scale
-        m_new = ct.maximum(m, m_tile)
-        
-        # correction factor: rescale previous results to use new max
-        correction = ct.exp2(m - m_new, flush_to_zero=True)
-        l = correction * l # l originally contains sum(exp(s - m_old)), correction rescales to sum(exp(s - m_new))
-        o = correction * o # o originally contains o = exp(s0 - m_old) @ V0, so after correction -> exp(s0 - m_new) @ V0 = exp(s0 - m_old) * exp(m_old - m_new) @ V0: 
+        m_new = max(m, ct.max(acc, axis=-1, keepdims=True) * qk_scale)
+        acc = acc * qk_scale - m_new
 
         # accumulate this tile's contribution
-        softmax_numerator_tile = ct.exp2(acc  * qk_scale - m_new, flush_to_zero=True)
-        l = l + ct.sum(softmax_numerator_tile, axis=-1, keepdims=True)
+        softmax_numerator_tile = ct.exp2(acc, flush_to_zero=True)
+        l_new = ct.sum(softmax_numerator_tile, axis=-1, keepdims=True)
+        correction = ct.exp2(m - m_new, flush_to_zero=True)
 
-        o = ct.mma(softmax_numerator_tile.astype(ct.float16), v, o) 
+        # correction factor: rescale previous results to use new max
+        l = l * correction + l_new
+        o = o * correction
+
+        o = ct.mma(softmax_numerator_tile.astype(Q.dtype), v, o)
 
         m = m_new
 
@@ -423,9 +423,8 @@ def cutile_flash_attention_v2(Q, K, V):
     # extract tensor dimensions
     batch, num_heads, seq, head_dim = Q.shape
 
-    # pre-compute the scale: 1/sqrt(d_k) * 1/ln(2) to be able to use exp2 (faster than exp)
-    INV_LOG_2 = 1.0 / math.log(2)
-    qk_scale = (1.0 / math.sqrt(head_dim)) * INV_LOG_2
+    # raw scale: 1/sqrt(d_k), kernel multiplies by 1/ln(2) internally for exp2
+    qk_scale = 1.0 / math.sqrt(head_dim)
 
     # key to cache tile sizes based on (seq, head_dim) tuple, we only autotune if new config
     cache_key = (seq, head_dim)
