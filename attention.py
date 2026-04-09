@@ -444,11 +444,11 @@ def cutile_flash_attention_v2(Q, K, V):
         # run time_fn for every tile size config and choose the best one
         for bm, bn in configs:
             t = time_fn(lambda q, k, v: _launch_v2(q, k, v, qk_scale, seq, head_dim, bm, bn), Q, K, V)
-            print(f"    BLOCK_M={bm:3d} BLOCK_N={bn:3d} -> {t:.3f} ms")
+            print(f"-----------BLOCK_M={bm:3d} BLOCK_N={bn:3d} -> {t:.3f} ms")
             if t < best_time:
                 best_time = t
                 best_config = (bm, bn)
-        print(f"  [autotune] best: BLOCK_M={best_config[0]} BLOCK_N={best_config[1]} ({best_time:.3f} ms)")
+        print(f"------[autotune] best: BLOCK_M={best_config[0]} BLOCK_N={best_config[1]} ({best_time:.3f} ms)")
         _autotune_cache[cache_key] = best_config
 
     # get best tile sizes
