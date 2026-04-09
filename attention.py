@@ -470,12 +470,12 @@ except ImportError:
 
 def run_benchmarks():
     configs = [
-        (32, 128, 128, 32),     # small, many heads
-        (4, 32, 256, 64),       # small seq, standard head dim
-        (4, 32, 512, 64),       # medium
-        (4, 32, 1024, 64),      # medium-large
-        (4, 32, 2048, 64),      # large
-        (2, 16, 4096, 64),      # very large seq
+        (4, 32, 128, 64),      # small
+        (4, 32, 256, 64),      # small-medium
+        (4, 32, 512, 64),      # medium
+        (4, 32, 1024, 64),     # medium-large
+        (4, 32, 2048, 64),     # large
+        (4, 32, 4096, 64),     # very large
     ]
 
     if HAS_FLASH_ATTN:
