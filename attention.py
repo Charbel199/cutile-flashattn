@@ -456,12 +456,33 @@ def cutile_flash_attention_v2(Q, K, V):
     return _launch_v2(Q, K, V, qk_scale, seq, head_dim, bm, bn)
 
 
+# optional tri dao's flash attention implementations
+try:
+    from flash_attn import flash_attn_func
+    def flash_attn_dao(Q, K, V):
+        # flash_attn expects (batch, seq, heads, dim), we have (batch, heads, seq, dim)
+        return flash_attn_func(Q.transpose(1,2), K.transpose(1,2), V.transpose(1,2)).transpose(1,2)
+    HAS_FLASH_ATTN = True
+except ImportError:
+    HAS_FLASH_ATTN = False
+
+
+
+
 def run_benchmarks():
     configs = [
-        (32, 128, 128, 32),     # small
+        (32, 128, 128, 32),     # small, many heads
+        (4, 32, 256, 64),       # small seq, standard head dim
         (4, 32, 512, 64),       # medium
+        (4, 32, 1024, 64),      # medium-large
         (4, 32, 2048, 64),      # large
+        (2, 16, 4096, 64),      # very large seq
     ]
+
+    if HAS_FLASH_ATTN:
+        print("flash_attn (Tri Dao) found")
+    else:
+        print("flash_attn not installed, skipping")
 
     all_results = []
     config_labels = []
@@ -476,20 +497,22 @@ def run_benchmarks():
         V = torch.randn(BATCH, NUM_HEADS, SEQ, HEAD_DIM, dtype=torch.float16, device="cuda")
 
         fns = {
-            "PyTorch (optimized)": pytorch_attention,
-            "PyTorch (manual)": pytorch_manual_attention,
-            "Flash v1": cutile_flash_attention_v1,
-            "Flash v2": cutile_flash_attention_v2,
+            "PyTorch SDPA": pytorch_attention,
+            "Flash v2 (ours)": cutile_flash_attention_v2,
+            "Flash v1 (ours)": cutile_flash_attention_v1,
         }
-        # only include naive kernels for small SEQ (v1 hangs on large)
+        if HAS_FLASH_ATTN:
+            fns["flash_attn (Dao)"] = flash_attn_dao
+        # only include naive/manual for small SEQ
         if SEQ <= 128:
             fns["Cutile v1 (naive)"] = cutile_attention_v1
         if SEQ <= 2048:
             fns["Cutile v2 (naive)"] = cutile_attention_v2
+            fns["PyTorch (manual)"] = pytorch_manual_attention
 
         results = benchmark(fns, Q, K, V, ref_fn=pytorch_attention)
         all_results.append(results)
-        config_labels.append(f"B={BATCH} H={NUM_HEADS}\nSEQ={SEQ} D={HEAD_DIM}")
+        config_labels.append(f"B={BATCH}, H={NUM_HEADS}\nseq={SEQ}, d={HEAD_DIM}")
 
     plot_benchmarks(all_results, config_labels)
 
