@@ -1,8 +1,10 @@
 # Learning NVIDIA cuTile by implementing Flash Attention
 
-Implementing Flash Attention from scratch using NVIDIA's cuTile Python DSL, starting from naive kernels and progressing to a production-competitive implementation that matches PyTorch's `scaled_dot_product_attention`.
+Implementing Flash Attention from scratch using NVIDIA's cuTile Python DSL, starting from naive kernels and progressing to a production-competitive implementation that nearly matches PyTorch's `scaled_dot_product_attention`.
 
 ![Flash Attention diagram](docs/flashattn_1.png)
+
+<sub>Figure 1 from Dao et al., "FlashAttention: Fast and Memory-Efficient Exact Attention with IO-Awareness" (2022), https://arxiv.org/abs/2205.14135</sub>
 
 ## What's here
 
@@ -101,7 +103,7 @@ def cutile_flash_attention_v2_kernel(Q: ct.Array,
 
 ![Scaling comparison](docs/benchmark_scaling.png)
 
-Our cuTile Flash v2 matches PyTorch SDPA and comes within ~10% of Tri Dao's hand-tuned `flash_attn` implementation across all sequence lengths.
+Our cuTile Flash v2 nearly matches PyTorch SDPA and comes within ~10% of Tri Dao's hand-tuned `flash_attn` implementation across all sequence lengths (SEQ=128 to 4096). Times are GPU kernel time only, measured with the PyTorch profiler (CUPTI), so Python and launch overhead are not counted.
 
 ## Requirements
 
@@ -116,7 +118,7 @@ Versions used in this experiment: `torch==2.11.0`, `cuda-tile==1.2.0`
 
 Optional (for benchmarking against Tri Dao's implementation):
 ```bash
-pip install flash-attn --no-build-isolation  # v2.8.4
+pip install flash-attn --no-build-isolation  # benchmarked with v2.8.3.post2
 ```
 
 ## Running

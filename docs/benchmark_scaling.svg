@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 556" font-family="'JetBrains Mono', SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace" role="img" aria-label="Log-log chart of GPU kernel time per call in ms against sequence length 128 to 4096 on an RTX PRO 6000 Blackwell, fp16, median of 8 runs. Flash v2 (ours), PyTorch SDPA and Dao's flash_attn nearly overlap at every length: Flash v2 is within 10% of the faster of the two everywhere, from 4.2 microseconds at SEQ 128 (SDPA 4.4, flash_attn 5.0) to 1.91 ms at SEQ 4096 (SDPA 1.77, flash_attn 1.74). Flash v1 (ours) sits 1.5x to 1.8x above Flash v2 (0.65 ms at SEQ 2048, 3.08 ms at 4096). Manual PyTorch (4.8 ms) and the naive cuTile v2 kernel (18 ms) climb much faster and are 11x and 41x slower than Flash v2 at SEQ 2048. Cutile v1 (naive) only runs from SEQ 128 to 512 (0.36, 2.26 and 13.83 ms, the last two from single runs); at SEQ 1024 its cuTile compile does not finish.">
+<title>Log-log chart of GPU kernel time per call in ms against sequence length 128 to 4096 on an RTX PRO 6000 Blackwell, fp16, median of 8 runs. Flash v2 (ours), PyTorch SDPA and Dao's flash_attn nearly overlap at every length: Flash v2 is within 10% of the faster of the two everywhere, from 4.2 microseconds at SEQ 128 (SDPA 4.4, flash_attn 5.0) to 1.91 ms at SEQ 4096 (SDPA 1.77, flash_attn 1.74). Flash v1 (ours) sits 1.5x to 1.8x above Flash v2 (0.65 ms at SEQ 2048, 3.08 ms at 4096). Manual PyTorch (4.8 ms) and the naive cuTile v2 kernel (18 ms) climb much faster and are 11x and 41x slower than Flash v2 at SEQ 2048. Cutile v1 (naive) only runs from SEQ 128 to 512 (0.36, 2.26 and 13.83 ms, the last two from single runs); at SEQ 1024 its cuTile compile does not finish.</title>
+<text x="24" y="22" dy="0.35em" font-size="15" font-weight="700" fill="#1c1917">Attention kernel time vs sequence length</text>
+<text x="24" y="46" dy="0.35em" font-size="13" fill="#78716c">GPU kernel time per call, median of 8 runs. RTX PRO 6000 Blackwell, fp16, B 4, H 32, D 64</text>
+<line x1="84" y1="406.1" x2="576" y2="406.1" stroke="#d6d3d1" stroke-width="1"/>
+<text x="76" y="406.1" dy="0.35em" font-size="13" text-anchor="end" fill="#57534e">0.01</text>
+<line x1="84" y1="313.3" x2="576" y2="313.3" stroke="#d6d3d1" stroke-width="1"/>
+<text x="76" y="313.3" dy="0.35em" font-size="13" text-anchor="end" fill="#57534e">0.1</text>
+<line x1="84" y1="220.6" x2="576" y2="220.6" stroke="#d6d3d1" stroke-width="1"/>
+<text x="76" y="220.6" dy="0.35em" font-size="13" text-anchor="end" fill="#57534e">1</text>
+<line x1="84" y1="127.8" x2="576" y2="127.8" stroke="#d6d3d1" stroke-width="1"/>
+<text x="76" y="127.8" dy="0.35em" font-size="13" text-anchor="end" fill="#57534e">10</text>
+<line x1="104.0" y1="72" x2="104.0" y2="452" stroke="#d6d3d1" stroke-width="1" stroke-dasharray="2 4"/>
+<text x="104.0" y="468" dy="0.35em" font-size="13" text-anchor="middle" fill="#57534e">128</text>
+<line x1="195.2" y1="72" x2="195.2" y2="452" stroke="#d6d3d1" stroke-width="1" stroke-dasharray="2 4"/>
+<text x="195.2" y="468" dy="0.35em" font-size="13" text-anchor="middle" fill="#57534e">256</text>
+<line x1="286.4" y1="72" x2="286.4" y2="452" stroke="#d6d3d1" stroke-width="1" stroke-dasharray="2 4"/>
+<text x="286.4" y="468" dy="0.35em" font-size="13" text-anchor="middle" fill="#57534e">512</text>
+<line x1="377.6" y1="72" x2="377.6" y2="452" stroke="#d6d3d1" stroke-width="1" stroke-dasharray="2 4"/>
+<text x="377.6" y="468" dy="0.35em" font-size="13" text-anchor="middle" fill="#57534e">1024</text>
+<line x1="468.8" y1="72" x2="468.8" y2="452" stroke="#d6d3d1" stroke-width="1" stroke-dasharray="2 4"/>
+<text x="468.8" y="468" dy="0.35em" font-size="13" text-anchor="middle" fill="#57534e">2048</text>
+<line x1="560.0" y1="72" x2="560.0" y2="452" stroke="#d6d3d1" stroke-width="1" stroke-dasharray="2 4"/>
+<text x="560.0" y="468" dy="0.35em" font-size="13" text-anchor="middle" fill="#57534e">4096</text>
+<line x1="84" y1="452" x2="576" y2="452" stroke="#78716c" stroke-width="1.5"/>
+<line x1="84" y1="72" x2="84" y2="452" stroke="#78716c" stroke-width="1.5"/>
+<text x="330" y="490" dy="0.35em" font-size="13" text-anchor="middle" fill="#78716c">SEQ (sequence length, log2 scale)</text>
+<text x="30" y="262" dy="0.35em" font-size="13" text-anchor="middle" fill="#78716c" transform="rotate(-90 30 262)">kernel time in ms (log scale)</text>
+<path d="M475.8,104.5 H568 L580,104.5 H586" fill="none" stroke="#bc4c00" stroke-width="1" stroke-opacity="0.7"/>
+<path d="M475.8,157.1 H568 L580,148.5 H586" fill="none" stroke="#0550ae" stroke-width="1" stroke-opacity="0.7"/>
+<path d="M567.0,175.2 H568 L580,166.5 H586" fill="none" stroke="#57534e" stroke-width="1" stroke-opacity="0.7"/>
+<path d="M567.0,194.6 H568 L580,184.6 H586" fill="none" stroke="#8b1e2f" stroke-width="1" stroke-opacity="0.7"/>
+<path d="M567.0,197.6 H568 L580,202.6 H586" fill="none" stroke="#0550ae" stroke-width="1" stroke-opacity="0.7"/>
+<path d="M567.0,198.3 H568 L580,220.6 H586" fill="none" stroke="#047857" stroke-width="1" stroke-opacity="0.7"/>
+<path d="M104.0,398.4 L195.2,362.8 L286.4,293.3 L377.6,213.3 L468.8,157.1" fill="none" stroke="#0550ae" stroke-width="2.0" stroke-linejoin="round" stroke-dasharray="6 4"/>
+<circle cx="104.0" cy="398.4" r="3.5" fill="#0550ae"/>
+<circle cx="195.2" cy="362.8" r="3.5" fill="#0550ae"/>
+<circle cx="286.4" cy="293.3" r="3.5" fill="#0550ae"/>
+<circle cx="377.6" cy="213.3" r="3.5" fill="#0550ae"/>
+<circle cx="468.8" cy="157.1" r="3.5" fill="#0550ae"/>
+<path d="M104.0,315.4 L195.2,270.9 L286.4,214.0 L377.6,156.8 L468.8,104.5" fill="none" stroke="#bc4c00" stroke-width="2.0" stroke-linejoin="round"/>
+<circle cx="104.0" cy="315.4" r="3.5" fill="#bc4c00"/>
+<circle cx="195.2" cy="270.9" r="3.5" fill="#bc4c00"/>
+<circle cx="286.4" cy="214.0" r="3.5" fill="#bc4c00"/>
+<circle cx="377.6" cy="156.8" r="3.5" fill="#bc4c00"/>
+<circle cx="468.8" cy="104.5" r="3.5" fill="#bc4c00"/>
+<path d="M104.0,419.9 L195.2,386.9 L286.4,338.7 L377.6,292.1 L468.8,238.2 L560.0,175.2" fill="none" stroke="#57534e" stroke-width="2.0" stroke-linejoin="round"/>
+<circle cx="104.0" cy="419.9" r="3.5" fill="#57534e"/>
+<circle cx="195.2" cy="386.9" r="3.5" fill="#57534e"/>
+<circle cx="286.4" cy="338.7" r="3.5" fill="#57534e"/>
+<circle cx="377.6" cy="292.1" r="3.5" fill="#57534e"/>
+<circle cx="468.8" cy="238.2" r="3.5" fill="#57534e"/>
+<circle cx="560.0" cy="175.2" r="3.5" fill="#57534e"/>
+<path d="M104.0,261.6 L195.2,187.8 L286.4,114.8" fill="none" stroke="#bc4c00" stroke-width="2.0" stroke-linejoin="round"/>
+<rect x="100.0" y="257.6" width="8.0" height="8.0" fill="#bc4c00"/>
+<rect x="191.2" y="183.8" width="8.0" height="8.0" fill="#bc4c00"/>
+<rect x="282.4" y="110.8" width="8.0" height="8.0" fill="#bc4c00"/>
+<path d="M104.0,434.0 L195.2,401.2 L286.4,363.6 L377.6,309.8 L468.8,256.0 L560.0,198.3" fill="none" stroke="#047857" stroke-width="2.0" stroke-linejoin="round"/>
+<circle cx="104.0" cy="434.0" r="3.5" fill="#047857"/>
+<circle cx="195.2" cy="401.2" r="3.5" fill="#047857"/>
+<circle cx="286.4" cy="363.6" r="3.5" fill="#047857"/>
+<circle cx="377.6" cy="309.8" r="3.5" fill="#047857"/>
+<circle cx="468.8" cy="256.0" r="3.5" fill="#047857"/>
+<circle cx="560.0" cy="198.3" r="3.5" fill="#047857"/>
+<path d="M104.0,439.2 L195.2,403.4 L286.4,363.8 L377.6,307.8 L468.8,254.0 L560.0,197.6" fill="none" stroke="#0550ae" stroke-width="2.0" stroke-linejoin="round"/>
+<circle cx="104.0" cy="439.2" r="3.5" fill="#0550ae"/>
+<circle cx="195.2" cy="403.4" r="3.5" fill="#0550ae"/>
+<circle cx="286.4" cy="363.8" r="3.5" fill="#0550ae"/>
+<circle cx="377.6" cy="307.8" r="3.5" fill="#0550ae"/>
+<circle cx="468.8" cy="254.0" r="3.5" fill="#0550ae"/>
+<circle cx="560.0" cy="197.6" r="3.5" fill="#0550ae"/>
+<path d="M104.0,441.0 L195.2,407.7 L286.4,363.1 L377.6,307.9 L468.8,254.0 L560.0,194.6" fill="none" stroke="#8b1e2f" stroke-width="3.0" stroke-linejoin="round"/>
+<circle cx="104.0" cy="441.0" r="4.5" fill="#8b1e2f"/>
+<circle cx="195.2" cy="407.7" r="4.5" fill="#8b1e2f"/>
+<circle cx="286.4" cy="363.1" r="4.5" fill="#8b1e2f"/>
+<circle cx="377.6" cy="307.9" r="4.5" fill="#8b1e2f"/>
+<circle cx="468.8" cy="254.0" r="4.5" fill="#8b1e2f"/>
+<circle cx="560.0" cy="194.6" r="4.5" fill="#8b1e2f"/>
+<text x="590" y="104.5" dy="0.35em" font-size="13" font-weight="600" fill="#bc4c00">Cutile v2 (naive)</text>
+<text x="590" y="148.5" dy="0.35em" font-size="13" font-weight="600" fill="#0550ae">PyTorch (manual)</text>
+<text x="590" y="166.5" dy="0.35em" font-size="13" font-weight="600" fill="#57534e">Flash v1 (ours)</text>
+<text x="590" y="184.6" dy="0.35em" font-size="13" font-weight="700" fill="#8b1e2f">Flash v2 (ours)</text>
+<text x="590" y="202.6" dy="0.35em" font-size="13" font-weight="600" fill="#0550ae">PyTorch SDPA</text>
+<text x="590" y="220.6" dy="0.35em" font-size="13" font-weight="600" fill="#047857">flash_attn (Dao)</text>
+<text x="278.4" y="100.8" dy="0.35em" font-size="13" font-weight="600" text-anchor="end" fill="#bc4c00">Cutile v1 (naive)</text>
+<text x="24" y="534" dy="0.35em" font-size="13" font-weight="700" fill="#1c1917">Flash v2 within 10% of SDPA/flash_attn at every SEQ; 4096: 1.91 vs 1.77 / 1.74 ms</text>
+</svg>

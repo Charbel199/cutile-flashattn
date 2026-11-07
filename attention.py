@@ -3,7 +3,7 @@ from cuda.tile import RoundingMode as RMd
 import torch
 import torch.nn.functional as F
 import math
-from utils import benchmark, plot_benchmarks, time_fn
+from utils import benchmark, plot_benchmarks, kernel_time_fn
 
 BLOCK_M = 64  # tile size for Q rows (query dimension)
 BLOCK_N = 64  # tile size for K/V rows (key dimension)
@@ -271,7 +271,6 @@ def cutile_flash_attention_v1_kernel(Q: ct.Array,
             (batch_idx, head_idx, j, 0), # tile index
             (1, 1, BLOCK_N, HEAD_DIM), # how much to load (1 batch, 1 head, BLOCK_N rows/SEQ, full HEAD_DIM)
             )
-        v = ct.astype(v, ct.float32)
 
         # squeeze tensors (to remove batch and head dims)
         k = ct.reshape(k, (BLOCK_N, HEAD_DIM))
@@ -299,7 +298,7 @@ def cutile_flash_attention_v1_kernel(Q: ct.Array,
         softmax_numerator_tile = ct.exp(acc - m_new)
         l = l + ct.sum(softmax_numerator_tile, axis=-1, keepdims=True)
 
-        o = ct.mma(softmax_numerator_tile, v, o)
+        o = ct.mma(ct.astype(softmax_numerator_tile, ct.float16), v, o) # fp16 in, fp32 accumulate: keeps P@V on tensor cores
 
         m = m_new
 
@@ -434,9 +433,9 @@ def cutile_flash_attention_v2(Q, K, V):
         print(f"------[autotune] seq={seq} head_dim={head_dim}")
         best_time = float("inf")
         best_config = configs[0]
-        # run time_fn for every tile size config and choose the best one
+        # run kernel_time_fn (GPU kernel time) for every tile size config and choose the best one
         for bm, bn in configs:
-            t = time_fn(lambda q, k, v: _launch_v2(q, k, v, qk_scale, seq, head_dim, bm, bn), Q, K, V)
+            t = kernel_time_fn(lambda q, k, v: _launch_v2(q, k, v, qk_scale, seq, head_dim, bm, bn), Q, K, V)
             print(f"-----------BLOCK_M={bm:3d} BLOCK_N={bn:3d} -> {t:.3f} ms")
             if t < best_time:
                 best_time = t
@@ -497,7 +496,8 @@ def run_benchmarks():
         if HAS_FLASH_ATTN:
             fns["flash_attn (Dao)"] = flash_attn_dao
         # only include naive/manual for small SEQ
-        if SEQ <= 128:
+        # naive v1 runs up to SEQ 512; at 1024 its cuTile compile does not finish in reasonable time
+        if SEQ <= 512:
             fns["Cutile v1 (naive)"] = cutile_attention_v1
         if SEQ <= 2048:
             fns["Cutile v2 (naive)"] = cutile_attention_v2

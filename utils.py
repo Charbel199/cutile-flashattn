@@ -21,6 +21,25 @@ def time_fn(fn, *args):
     return start.elapsed_time(end) / ITERS  # ms per call
 
 
+def kernel_time_fn(fn, *args):
+    """GPU kernel time per call (ms): sum of all device activities a call launches
+    (kernels, memset, memcpy) measured by CUPTI, excluding host overhead and idle gaps."""
+    from torch.profiler import profile, ProfilerActivity
+    from torch.autograd import DeviceType
+
+    for _ in range(WARMUP):
+        fn(*args)
+    torch.cuda.synchronize()
+
+    with profile(activities=[ProfilerActivity.CUDA]) as prof:
+        for _ in range(ITERS):
+            fn(*args)
+        torch.cuda.synchronize()
+
+    device_us = sum(e.device_time for e in prof.events() if e.device_type == DeviceType.CUDA)
+    return device_us / 1000 / ITERS  # ms per call
+
+
 def compute_error(out, out_ref):
     err = (out - out_ref).abs().max().item()
     return err
@@ -42,7 +61,7 @@ def benchmark(fns, Q, K, V, ref_fn=None):
                 continue
 
         try:
-            t = time_fn(fn, Q, K, V)
+            t = kernel_time_fn(fn, Q, K, V)
             results.append((name, err, f"{t:.3f} ms", t))
         except Exception as e:
             results.append((name, err, "FAILED", None))
@@ -159,10 +178,13 @@ def plot_scaling(all_results, config_labels, save_path="docs/benchmark_scaling.p
                     times.append(time_ms)
                     break
 
-        if len(seqs) < 2:
+        if not seqs:
             continue
 
         color = COLORS.get(name, "#9E9E9E")
+        if len(seqs) == 1:  # single point: draw a marker so the series is still shown
+            ax.plot(seqs, times, 's', color=color, label=name, markersize=7)
+            continue
         ax.plot(seqs, times, 'o-', color=color, label=name, linewidth=2, markersize=5)
 
     ax.set_xlabel("Sequence Length", fontsize=11)
